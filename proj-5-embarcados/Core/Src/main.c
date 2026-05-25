@@ -61,11 +61,13 @@ char uart_cmd[32];
 uint8_t uart_idx = 0;
 
 uint8_t i2c_rx_buf[2];
+uint8_t dac_buf[2];
 uint8_t pcf_control_byte;
 volatile uint8_t i2c_busy = 0;
 volatile uint8_t spi_busy = 0;
 
 uint8_t last_value = 0;
+uint8_t canal_atual = 0;
 char current_letter = 0;
 char current_sign = 0;
 uint8_t matrix_toggle = 0;
@@ -147,7 +149,18 @@ int main(void)
 
   HAL_UART_Receive_IT(&huart2, &uart_rx_byte, 1);
 
-  char start_msg[] = "\r\nSistema iniciado. Comandos: Temp, Volt, LDR, Set_DAC_<0-255>\r\n";
+  //char start_msg[] = "\r\nSistema iniciado. Comandos: Temp, Volt, LDR, Set_DAC_<0-255>\r\n";
+  char start_msg[] =
+  "\r\n====================================\r\n"
+  " Projeto 5 - I2C + SPI + PCF8591 + MAX7219\r\n"
+  " NUCLEO-L476RG + USART2 + I2C1 + SPI2\r\n"
+  "====================================\r\n"
+  "Comandos disponiveis:\r\n"
+  "Read_AIN0  // LDR: matriz alternara entre L e + ou -\r\n"
+  "Read_AIN1  // Temperatura: matriz alternara entre T e + ou -\r\n"
+  //"Read_AIN3  // Tensao: matriz alternara entre V e + ou -\r\n"
+  "Read_AIN3  // Tensao do potenciometro: matriz alternara entre V e + ou -\r\n"
+  "Set_DAC_0 ate Set_DAC_255\r\n\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)start_msg, strlen(start_msg), HAL_MAX_DELAY);
 
   /* USER CODE END 2 */
@@ -405,17 +418,20 @@ static void MX_GPIO_Init(void)
 
 void UART_ProcessCommand(char *cmd)
 {
-  if (strcmp(cmd, "Temp") == 0 || strcmp(cmd, "Read_AIN1") == 0)
+  //if (strcmp(cmd, "Temp") == 0 || strcmp(cmd, "Read_AIN1") == 0)
+  if (strcmp(cmd, "Read_AIN1") == 0)
   {
     current_letter = 'T';
     PCF8591_Read_IT(PCF_AIN_TEMP);
   }
-  else if (strcmp(cmd, "Volt") == 0 || strcmp(cmd, "Read_AIN3") == 0)
+  //else if (strcmp(cmd, "Volt") == 0 || strcmp(cmd, "Read_AIN3") == 0)
+  else if (strcmp(cmd, "Read_AIN3") == 0)
   {
     current_letter = 'V';
     PCF8591_Read_IT(PCF_AIN_VOLT);
   }
-  else if (strcmp(cmd, "LDR") == 0 || strcmp(cmd, "Read_AIN0") == 0)
+  //else if (strcmp(cmd, "LDR") == 0 || strcmp(cmd, "Read_AIN0") == 0)
+  else if (strcmp(cmd, "Read_AIN0") == 0)
   {
     current_letter = 'L';
     PCF8591_Read_IT(PCF_AIN_LDR);
@@ -440,6 +456,8 @@ void PCF8591_Read_IT(uint8_t channel)
 {
   if (i2c_busy) return;
 
+  //pcf_control_byte = 0x00 | (channel & 0x03);
+  canal_atual = channel;
   pcf_control_byte = 0x00 | (channel & 0x03);
   i2c_busy = 1;
 
@@ -448,10 +466,11 @@ void PCF8591_Read_IT(uint8_t channel)
 
 void PCF8591_SetDAC_IT(uint8_t value)
 {
-  static uint8_t dac_buf[2];
+  //static uint8_t dac_buf[2];
 
   if (i2c_busy) return;
 
+  canal_atual = 99;
   dac_buf[0] = 0x40;
   dac_buf[1] = value;
   i2c_busy = 1;
@@ -488,12 +507,39 @@ void MAX7219_Init_Blocking(void)
   MAX7219_Send_Blocking(0x0C, 0x01);
   MAX7219_Send_Blocking(0x0F, 0x00);
 }
-
+/*
 void MAX7219_DisplayChar_Blocking(const uint8_t character[8])
 {
   for (uint8_t i = 0; i < 8; i++)
   {
     MAX7219_Send_Blocking(i + 1, character[i]);
+  }
+}
+*/
+void MAX7219_DisplayChar_Blocking(const uint8_t character[8])
+{
+  uint8_t rotated[8] = {0};
+
+  /*
+   * Corrige a orientacao fisica da matriz na protoboard.
+   * Antes, V aparecia como > e - aparecia como |.
+   * Aqui fazemos uma rotacao de 90 graus no sentido horario.
+   */
+  for (uint8_t row = 0; row < 8; row++)
+  {
+    for (uint8_t col = 0; col < 8; col++)
+    {
+      if (character[row] & (1 << col))
+      {
+        //rotated[col] |= (1 << (7 - row));
+    	rotated[7 - col] |= (1 << row);
+      }
+    }
+  }
+
+  for (uint8_t i = 0; i < 8; i++)
+  {
+    MAX7219_Send_Blocking(i + 1, rotated[i]);
   }
 }
 
@@ -531,10 +577,16 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
   if (hi2c->Instance == I2C1)
   {
-    if ((pcf_control_byte & 0x40) == 0x40)
+    //if ((pcf_control_byte & 0x40) == 0x40)
+	if (canal_atual == 99)
     {
       i2c_busy = 0;
-      char msg[] = "DAC atualizado\r\n";
+      //char msg[] = "DAC atualizado\r\n";
+      //HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+      uint32_t tensao_mV = (dac_buf[1] * 3300) / 255;
+      char msg[80];
+
+      sprintf(msg, "Valor do DAC: %u | %lumV\r\n", dac_buf[1], tensao_mV);
       HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
     }
     else
@@ -555,8 +607,42 @@ void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
     if (last_value < 128) current_sign = '-';
     else current_sign = '+';
 
-    char msg[64];
-    sprintf(msg, "Valor lido: %u | %c\r\n", last_value, current_sign);
+    matrix_toggle = 0;
+    last_toggle_tick = HAL_GetTick() - 500;
+
+    /*
+    matrix_toggle = 0;
+    last_toggle_tick = HAL_GetTick();
+
+    if (current_letter == 'T') MAX7219_DisplayChar_Blocking(CHAR_T);
+    else if (current_letter == 'V') MAX7219_DisplayChar_Blocking(CHAR_V);
+    else if (current_letter == 'L') MAX7219_DisplayChar_Blocking(CHAR_L);
+    */
+
+    //char msg[64];
+    char msg[120];
+    //sprintf(msg, "Valor lido: %u | %c\r\n", last_value, current_sign);
+    uint32_t tensao_mV = (last_value * 3300) / 255;
+
+    if (canal_atual == PCF_AIN_LDR)
+    {
+      sprintf(msg,
+              "AIN0: %u | %lumV // matriz alternara entre L e %c\r\n",
+              last_value, tensao_mV, current_sign);
+    }
+    else if (canal_atual == PCF_AIN_TEMP)
+    {
+      sprintf(msg,
+              "AIN1: %u | %lumV // matriz alternara entre T e %c\r\n",
+              last_value, tensao_mV, current_sign);
+    }
+    else if (canal_atual == PCF_AIN_VOLT)
+    {
+      sprintf(msg,
+              //"AIN3: %u | %lumV // matriz alternara entre V e %c\r\n",
+			  "AIN3 (potenciometro): %u | %lumV // matriz alternara entre V e %c\r\n",
+              last_value, tensao_mV, current_sign);
+    }
     HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
