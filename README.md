@@ -11,6 +11,34 @@ Projeto acadêmico de sistemas embarcados desenvolvido com a placa **STM32 NUCLE
 
 O sistema recebe comandos via terminal serial, lê canais analógicos do PCF8591 por I²C, controla a saída DAC do módulo e exibe informações em uma matriz 8x8 controlada por SPI. A matriz alterna entre uma letra que identifica o canal lido e um sinal (`+` ou `-`) indicando se a leitura está acima ou abaixo da metade da escala.
 
+
+## 📚 Documentação completa do projeto
+
+A documentação do projeto registra a configuração do STM32CubeMX/STM32CubeIDE, as ligações físicas dos módulos, os comandos via terminal serial e os testes realizados com os periféricos.
+
+🔗 **Repositório do projeto:**
+[proj-5-embarcados — GitHub](https://github.com/Vjfrib/proj-5-embarcados)
+
+### Conteúdo documentado
+
+* Configuração da placa **NUCLEO-L476RG** no STM32CubeMX.
+* Uso da **USART2** para comunicação serial com o computador.
+* Configuração do barramento **I²C1** para comunicação com o **PCF8591**.
+* Configuração da **SPI2** para controle da matriz de LEDs com **MAX7219**.
+* Ligações físicas entre a NUCLEO, o módulo PCF8591 e a matriz de LEDs.
+* Implementação de comandos via terminal:
+
+  * `Read_AIN0` — leitura do canal associado ao LDR.
+  * `Read_AIN1` — leitura do canal associado ao termistor.
+  * `Read_AIN3` — leitura do canal associado ao potenciômetro.
+  * `Set_DAC_0` até `Set_DAC_255` — controle da saída DAC.
+* Exibição visual na matriz 8x8 alternando entre:
+
+  * `L`, `T` ou `V`, indicando o canal lido.
+  * `+` ou `-`, indicando se a leitura está acima ou abaixo da metade da escala.
+
+> Este projeto demonstra a integração de múltiplos protocolos de comunicação em sistemas embarcados: UART para comandos, I²C para leitura/escrita no PCF8591 e SPI para acionamento da matriz de LEDs MAX7219.
+
 ## Visão geral
 
 Este projeto demonstra a integração de múltiplos periféricos em um microcontrolador STM32:
